@@ -1,0 +1,7 @@
+transformers>=4.45
+accelerate>=0.34
+bitsandbytes>=0.43
+peft>=0.12
+huggingface_hub>=0.25
+pandas
+pyarrow

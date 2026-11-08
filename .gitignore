@@ -1,0 +1,14 @@
+.claude/
+CLAUDE.md
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+.ipynb_checkpoints/
+outputs/
+checkpoints/
+*.safetensors
+*.bin
+*.gguf
+wandb/
