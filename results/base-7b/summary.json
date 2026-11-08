@@ -1,0 +1,19 @@
+{
+  "run_name": "base-7b",
+  "benchmark": "HumanEvalFix-Python (tests in prompt), greedy, pass@1",
+  "model": "Qwen/Qwen2.5-Coder-7B-Instruct",
+  "adapter": null,
+  "oracle": null,
+  "n_tasks": 164,
+  "n_passed": 101,
+  "pass@1": 61.59,
+  "by_bug_type": {
+    "excess logic": "17/31",
+    "function misuse": "6/8",
+    "missing logic": "16/33",
+    "operator misuse": "16/25",
+    "value misuse": "31/44",
+    "variable misuse": "15/23"
+  },
+  "minutes": 0.0
+}

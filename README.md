@@ -15,11 +15,17 @@ python src/eval_humanevalfix.py --oracle buggy       # harness check, should be 
 python src/eval_humanevalfix.py --run-name base-7b   # base model (needs a GPU)
 ```
 
-Results are written to `results/<run-name>/summary.json` and `samples.jsonl`.
+Results are written to `results/<run-name>/summary.json` and `samples.jsonl`. To re-score saved completions after a harness change, without a GPU:
+
+```bash
+python src/eval_humanevalfix.py --rescore results/base-7b/samples.jsonl
+```
+
+The base run took about 9 minutes on a free Colab T4. Per-bug-type scores are in each `summary.json`.
 
 ## Results
 
 | Model | HumanEvalFix-Python pass@1 |
 |---|---|
-| Qwen2.5-Coder-7B-Instruct (base, 4-bit) | _pending_ |
+| Qwen2.5-Coder-7B-Instruct (base, 4-bit) | **61.6%** (101/164) |
 | + QLoRA bug-fix fine-tune | _pending_ |

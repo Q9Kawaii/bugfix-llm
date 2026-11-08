@@ -54,10 +54,11 @@ def build_prompt(t: dict) -> str:
 # ---------------------------------------------------------------- scoring
 def extract_code(text: str, entry_point: str) -> str:
     blocks = re.findall(r"```(?:python|py)?\s*\n(.*?)```", text, re.S)
-    for b in blocks:
-        if f"def {entry_point}" in b:
-            return b
-    return blocks[0] if blocks else text
+    code = next((b for b in blocks if f"def {entry_point}" in b),
+                blocks[0] if blocks else text)
+    # Drop top-level test calls the model echoed back (e.g. `check(fib)`):
+    # they would run before the harness defines `check`.
+    return "\n".join(l for l in code.splitlines() if not l.startswith("check("))
 
 
 def helpers_prefix(t: dict) -> str:
@@ -137,13 +138,21 @@ def main():
     ap.add_argument("--max-new-tokens", type=int, default=768)
     ap.add_argument("--oracle", choices=["canonical", "buggy"], default=None,
                     help="skip the model; score known code to test the harness")
+    ap.add_argument("--rescore", default=None, metavar="SAMPLES_JSONL",
+                    help="re-score saved completions without running the model")
     ap.add_argument("--out-dir", default="results")
     args = ap.parse_args()
 
     tasks = load_tasks(args.limit)
     t0 = time.time()
 
-    if args.oracle:
+    if args.rescore:
+        with open(args.rescore, encoding="utf-8") as f:
+            saved = {r["task_id"]: r["completion"] for r in map(json.loads, f)}
+        tasks = [t for t in tasks if t["task_id"] in saved]
+        completions = [saved[t["task_id"]] for t in tasks]
+        run_name = args.run_name or os.path.basename(os.path.dirname(args.rescore))
+    elif args.oracle:
         field = "canonical_solution" if args.oracle == "canonical" else "buggy_solution"
         completions = [f"```python\n{t['import']}{t['declaration']}{t[field]}\n```" for t in tasks]
         run_name = args.run_name or f"oracle-{args.oracle}"
