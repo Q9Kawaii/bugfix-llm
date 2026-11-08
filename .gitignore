@@ -12,3 +12,4 @@ checkpoints/
 *.bin
 *.gguf
 wandb/
+data/*.jsonl

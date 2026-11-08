@@ -1,0 +1,49 @@
+{
+  "counts": {
+    "loaded": 161366,
+    "after_quality_filters": 49977,
+    "decontam_dropped_name": 1946,
+    "decontam_dropped_13gram": 106,
+    "after_decontam": 47925,
+    "candidates_tried": 7560,
+    "result: ok": 7358,
+    "result: original fails tests": 98,
+    "result: no caught mutation": 104,
+    "caught_mutants_by_type": {
+      "value misuse": 5584,
+      "variable misuse": 6976,
+      "missing logic": 4620,
+      "excess logic": 3574,
+      "operator misuse": 6061,
+      "function misuse": 3419
+    }
+  },
+  "n_train": 6000,
+  "n_heldout": 300,
+  "train_bug_types": {
+    "variable misuse": 1003,
+    "function misuse": 995,
+    "excess logic": 1013,
+    "value misuse": 1021,
+    "operator misuse": 1002,
+    "missing logic": 966
+  },
+  "train_sources": {
+    "Taco": 749,
+    "Apps": 753,
+    "Algorithm": 762,
+    "Code_Contests": 741,
+    "Leetcode": 766,
+    "Evol": 759,
+    "Data_Structure": 751,
+    "Prefill": 719
+  },
+  "args": {
+    "n_train": 6000,
+    "n_heldout": 300,
+    "pool_factor": 1.2,
+    "seed": 0,
+    "workers": 24,
+    "out_dir": "data"
+  }
+}

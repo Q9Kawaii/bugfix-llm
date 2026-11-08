@@ -24,10 +24,10 @@ import pandas as pd
 from huggingface_hub import hf_hub_download
 
 from execute import run_many
+from prompting import chat
 
 DATASET = ("bigcode/humanevalpack", "python/test-00000-of-00001.parquet")
 DEFAULT_MODEL = "Qwen/Qwen2.5-Coder-7B-Instruct"
-SYSTEM = "You are an expert Python programmer who fixes bugs precisely."
 
 
 # ---------------------------------------------------------------- data
@@ -41,14 +41,8 @@ def buggy_code(t: dict) -> str:
     return t["import"] + t["declaration"] + t["buggy_solution"]
 
 
-def build_prompt(t: dict) -> str:
-    return (
-        f"Fix the bug(s) in `{t['entry_point']}`.\n\n"
-        f"```python\n{buggy_code(t).strip()}\n```\n\n"
-        f"The fixed function must pass these tests:\n"
-        f"```python\n{t['test'].strip()}\n```\n\n"
-        f"Return only the complete fixed function in one ```python code block."
-    )
+def build_messages(t: dict) -> list[dict]:
+    return chat(t["entry_point"], buggy_code(t), t["test"])
 
 
 # ---------------------------------------------------------------- scoring
@@ -106,8 +100,7 @@ def generate(tasks, model_name, adapter, batch_size, max_new_tokens):
         batch = tasks[i : i + batch_size]
         texts = [
             tok.apply_chat_template(
-                [{"role": "system", "content": SYSTEM},
-                 {"role": "user", "content": build_prompt(t)}],
+                build_messages(t),
                 tokenize=False,
                 add_generation_prompt=True,
             )
