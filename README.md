@@ -25,28 +25,41 @@ Each example uses the same chat prompt as the evaluation (`src/prompting.py`): b
 python src/build_dataset.py --n-train 6000 --n-heldout 300   # ~15 min on CPU
 ```
 
+## Training
+
+`src/train_qlora.py` uses plain transformers + PEFT and runs on a free Colab/Kaggle T4:
+
+- Base model frozen in 4-bit NF4 (double quantization), fp16 compute.
+- LoRA r=16, α=32, dropout 0.05 on all attention and MLP projections.
+- Loss on the assistant answer only (the prompt tokens are masked).
+- 1 epoch, LR 1e-4 with cosine decay, effective batch 16, paged 8-bit AdamW, gradient checkpointing.
+- Checkpoints every 25 steps; re-running the same command resumes after a disconnect.
+
+```bash
+python src/train_qlora.py --output-dir runs/qlora-7b
+```
+
 ## Evaluation
 
-**Benchmark:** [HumanEvalFix](https://huggingface.co/datasets/bigcode/humanevalpack) (Python, 164 tasks). Each task gives the model a buggy function and its unit tests. The model returns a fixed function, and the tests are executed. The metric is greedy **pass@1**.
+Greedy **pass@1**, test-verified. The model gets a buggy function plus its unit tests, returns a fixed function, and the tests are executed.
+
+- **HumanEvalFix** ([humanevalpack](https://huggingface.co/datasets/bigcode/humanevalpack), Python, 164 hand-written bugs): the main benchmark, out of distribution relative to the training data.
+- **Held-out:** 300 synthetic bugs from `data/heldout.jsonl`, from problems never seen in training (in distribution).
 
 ```bash
 pip install -r requirements.txt
-python src/eval_humanevalfix.py --oracle canonical   # harness check, should be 100%
-python src/eval_humanevalfix.py --oracle buggy       # harness check, should be 0%
-python src/eval_humanevalfix.py --run-name base-7b   # base model (needs a GPU)
+python src/evaluate.py --oracle canonical                       # harness check: 100%
+python src/evaluate.py --oracle buggy                           # harness check: 0%
+python src/evaluate.py --run-name base-7b                       # base model (GPU)
+python src/evaluate.py --benchmark heldout --run-name base-7b-heldout
+python src/evaluate.py --run-name ft-7b --adapter runs/qlora-7b/adapter
 ```
 
-Results are written to `results/<run-name>/summary.json` and `samples.jsonl`. To re-score saved completions after a harness change, without a GPU:
-
-```bash
-python src/eval_humanevalfix.py --rescore results/base-7b/samples.jsonl
-```
-
-The base run took about 9 minutes on a free Colab T4. Per-bug-type scores are in each `summary.json`.
+Results are written to `results/<run-name>/summary.json` (including per-bug-type scores) and `samples.jsonl`. `--rescore results/<run>/samples.jsonl` re-scores saved outputs without a GPU.
 
 ## Results
 
-| Model | HumanEvalFix-Python pass@1 |
-|---|---|
-| Qwen2.5-Coder-7B-Instruct (base, 4-bit) | **61.6%** (101/164) |
-| + QLoRA bug-fix fine-tune | _pending_ |
+| Model | HumanEvalFix pass@1 | Held-out pass@1 |
+|---|---|---|
+| Qwen2.5-Coder-7B-Instruct (base, 4-bit) | **61.6%** (101/164) | _pending_ |
+| + QLoRA bug-fix fine-tune | _pending_ | _pending_ |

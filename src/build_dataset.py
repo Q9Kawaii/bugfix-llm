@@ -24,7 +24,7 @@ from concurrent.futures import ThreadPoolExecutor
 import pandas as pd
 from huggingface_hub import hf_hub_download
 
-from execute import run_program
+from execute import program, run_program
 from mutate import BUG_TYPES, mutate, strip_docstrings
 from prompting import chat
 
@@ -36,52 +36,11 @@ COLS = ["question_id", "subset", "question", "solution", "test", "test_info",
 BAD_TEST = r"fixture|parametrize|class Test|solution\.|monkeypatch|capsys|tmp_path|mock|open\(|unittest"
 BAD_SOL = r"input\(|print\(|open\(|sys\.stdin|import (?:numpy|pandas|requests|torch|scipy)|from (?:numpy|pandas)"
 
-# Minimal stand-in so tests using pytest.raises / pytest.approx run without pytest.
-PYTEST_SHIM = '''
-import sys as _sys, types as _types, re as _re
-_pt = _types.ModuleType("pytest")
-class _Raises:
-    def __init__(self, exc, match=None): self.exc, self.match, self.value = exc, match, None
-    def __enter__(self): return self
-    def __exit__(self, et, ev, tb):
-        if et is None: raise AssertionError("DID NOT RAISE")
-        if not issubclass(et, self.exc): return False
-        if self.match and not _re.search(self.match, str(ev)): raise AssertionError("match failed")
-        self.value = ev
-        return True
-def _approx(expected, rel=1e-6, abs_tol=1e-12, **kw):
-    abs_tol = kw.get("abs", abs_tol)
-    class _A:
-        def __eq__(self, got):
-            if isinstance(expected, (list, tuple)):
-                return len(got) == len(expected) and all(_approx(e, rel, abs_tol) == g for e, g in zip(expected, got))
-            return abs(got - expected) <= max(rel * abs(expected), abs_tol)
-    return _A()
-class _Mark:
-    def __getattr__(self, name): return lambda *a, **k: (lambda f: f)
-_pt.raises, _pt.approx, _pt.mark = _Raises, _approx, _Mark()
-_sys.modules["pytest"] = _pt
-'''
-
-RUNNER = '''
-import inspect as _inspect
-_tests = [f for n, f in list(globals().items())
-          if n.startswith("test") and _inspect.isfunction(f) and not _inspect.signature(f).parameters]
-assert _tests, "no runnable tests"
-for _t in _tests:
-    _t()
-'''
-
-
 def clean_tests(test: str) -> str:
     test = re.sub(r"from\s+solution\s+import\s*\([^)]*\)", "", test)
     lines = [l for l in test.splitlines()
              if not re.match(r"\s*(from\s+solution\s+import|import\s+solution)\b", l)]
     return "\n".join(lines).strip()
-
-
-def program(code: str, tests: str) -> str:
-    return f"{PYTEST_SHIM}\n{code}\n\n{tests}\n{RUNNER}"
 
 
 # ------------------------------------------------------------- decontamination
