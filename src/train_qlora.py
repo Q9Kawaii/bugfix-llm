@@ -12,6 +12,7 @@ transformers + PEFT so it runs on a free Colab/Kaggle T4 without extra deps.
 
 import argparse
 import json
+import math
 import os
 import random
 import time
@@ -40,6 +41,42 @@ def encode(example: dict, tok, max_len: int) -> dict | None:
             "labels": [-100] * len(p_ids) + a_ids}
 
 
+def build_trainer(model, tok, data, args, gpu: bool = True):
+    """gpu=False swaps fp16 + 8-bit optimizer for CPU-safe ones (local tests only)."""
+    from transformers import DataCollatorForSeq2Seq, Trainer, TrainingArguments
+
+    # Warmup as an explicit step count: works on transformers 4.x and 5.x.
+    per_step = args.batch_size * args.grad_accum
+    total_steps = args.max_steps if args.max_steps > 0 else \
+        math.ceil(math.ceil(len(data) / per_step) * args.epochs)
+    targs = TrainingArguments(
+        output_dir=args.output_dir,
+        per_device_train_batch_size=args.batch_size,
+        gradient_accumulation_steps=args.grad_accum,
+        num_train_epochs=args.epochs,
+        max_steps=args.max_steps,
+        learning_rate=args.lr,
+        lr_scheduler_type="cosine",
+        warmup_steps=max(1, int(0.03 * total_steps)),
+        weight_decay=0.0,
+        max_grad_norm=1.0,
+        optim="paged_adamw_8bit" if gpu else "adamw_torch",
+        fp16=gpu,
+        logging_steps=5,
+        save_steps=args.save_steps,
+        save_total_limit=2,
+        report_to="none",
+        seed=args.seed,
+        dataloader_num_workers=0,
+    )
+    return Trainer(
+        model=model,
+        args=targs,
+        train_dataset=data,
+        data_collator=DataCollatorForSeq2Seq(tok, padding=True, label_pad_token_id=-100),
+    )
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default=DEFAULT_MODEL)
@@ -62,8 +99,7 @@ def main():
     if not torch.cuda.is_available():
         raise SystemExit("No GPU found. In Colab: Runtime > Change runtime type > T4 GPU, then rerun.")
     from peft import LoraConfig, get_peft_model
-    from transformers import (AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig,
-                              DataCollatorForSeq2Seq, Trainer, TrainingArguments)
+    from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
     from transformers.trainer_utils import get_last_checkpoint
 
     # ---------------- data
@@ -102,33 +138,7 @@ def main():
     model.print_trainable_parameters()
 
     # ---------------- train
-    targs = TrainingArguments(
-        output_dir=args.output_dir,
-        per_device_train_batch_size=args.batch_size,
-        gradient_accumulation_steps=args.grad_accum,
-        num_train_epochs=args.epochs,
-        max_steps=args.max_steps,
-        learning_rate=args.lr,
-        lr_scheduler_type="cosine",
-        warmup_ratio=0.03,
-        weight_decay=0.0,
-        max_grad_norm=1.0,
-        optim="paged_adamw_8bit",
-        fp16=True,
-        logging_steps=5,
-        save_steps=args.save_steps,
-        save_total_limit=2,
-        report_to="none",
-        seed=args.seed,
-        dataloader_num_workers=0,
-    )
-    trainer = Trainer(
-        model=model,
-        args=targs,
-        train_dataset=data,
-        data_collator=DataCollatorForSeq2Seq(tok, padding=True, label_pad_token_id=-100),
-    )
-
+    trainer = build_trainer(model, tok, data, args)
     last = get_last_checkpoint(args.output_dir) if os.path.isdir(args.output_dir) else None
     if last:
         print(f"resuming from {last}", flush=True)
