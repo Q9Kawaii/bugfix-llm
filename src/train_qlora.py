@@ -59,6 +59,8 @@ def main():
     args = ap.parse_args()
 
     import torch
+    if not torch.cuda.is_available():
+        raise SystemExit("No GPU found. In Colab: Runtime > Change runtime type > T4 GPU, then rerun.")
     from peft import LoraConfig, get_peft_model
     from transformers import (AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig,
                               DataCollatorForSeq2Seq, Trainer, TrainingArguments)

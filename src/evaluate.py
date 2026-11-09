@@ -103,6 +103,8 @@ def extract_code(text: str, entry_point: str) -> str:
 # ---------------------------------------------------------------- generation
 def generate(tasks, model_name, adapter, batch_size, max_new_tokens):
     import torch
+    if not torch.cuda.is_available():
+        raise SystemExit("No GPU found. In Colab: Runtime > Change runtime type > T4 GPU, then rerun.")
     from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
     tok = AutoTokenizer.from_pretrained(model_name)
