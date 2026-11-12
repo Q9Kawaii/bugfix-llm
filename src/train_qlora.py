@@ -17,7 +17,7 @@ import os
 import random
 import time
 
-DEFAULT_MODEL = "Qwen/Qwen2.5-Coder-7B-Instruct"
+DEFAULT_MODEL = "Qwen/Qwen2.5-Coder-1.5B-Instruct"
 TRAIN_FILE = os.path.join(os.path.dirname(__file__), "..", "data", "train.jsonl")
 LORA_TARGETS = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
 
@@ -41,6 +41,12 @@ def encode(example: dict, tok, max_len: int) -> dict | None:
             "labels": [-100] * len(p_ids) + a_ids}
 
 
+def bf16_ok() -> bool:
+    """bf16 on Ampere+ (e.g. RTX 30/40), fp16 on older GPUs (e.g. Colab T4)."""
+    import torch
+    return torch.cuda.is_available() and torch.cuda.is_bf16_supported()
+
+
 def build_trainer(model, tok, data, args, gpu: bool = True):
     """gpu=False swaps fp16 + 8-bit optimizer for CPU-safe ones (local tests only)."""
     from transformers import DataCollatorForSeq2Seq, Trainer, TrainingArguments
@@ -61,7 +67,8 @@ def build_trainer(model, tok, data, args, gpu: bool = True):
         weight_decay=0.0,
         max_grad_norm=1.0,
         optim="paged_adamw_8bit" if gpu else "adamw_torch",
-        fp16=gpu,
+        bf16=gpu and bf16_ok(),
+        fp16=gpu and not bf16_ok(),
         logging_steps=5,
         save_steps=args.save_steps,
         save_total_limit=2,
@@ -89,8 +96,8 @@ def main():
     ap.add_argument("--lr", type=float, default=1e-4)
     ap.add_argument("--rank", type=int, default=16)
     ap.add_argument("--alpha", type=int, default=32)
-    ap.add_argument("--batch-size", type=int, default=1)
-    ap.add_argument("--grad-accum", type=int, default=16)
+    ap.add_argument("--batch-size", type=int, default=2)
+    ap.add_argument("--grad-accum", type=int, default=8)
     ap.add_argument("--save-steps", type=int, default=25)
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
@@ -122,10 +129,10 @@ def main():
         quantization_config=BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.float16,
+            bnb_4bit_compute_dtype=torch.bfloat16 if bf16_ok() else torch.float16,
             bnb_4bit_use_double_quant=True,
         ),
-        torch_dtype=torch.float16,
+        dtype=torch.bfloat16 if bf16_ok() else torch.float16,
         device_map={"": 0},
     )
     model.config.use_cache = False

@@ -29,7 +29,7 @@ from prompting import chat
 
 HUMANEVALFIX = ("bigcode/humanevalpack", "python/test-00000-of-00001.parquet")
 HELDOUT = os.path.join(os.path.dirname(__file__), "..", "data", "heldout.jsonl")
-DEFAULT_MODEL = "Qwen/Qwen2.5-Coder-7B-Instruct"
+DEFAULT_MODEL = "Qwen/Qwen2.5-Coder-1.5B-Instruct"
 
 
 # ---------------------------------------------------------------- benchmarks
@@ -107,6 +107,8 @@ def generate(tasks, model_name, adapter, batch_size, max_new_tokens):
         raise SystemExit("No GPU found. In Colab: Runtime > Change runtime type > T4 GPU, then rerun.")
     from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
+    # bf16 on Ampere+ (e.g. RTX 30/40), fp16 on older GPUs (e.g. Colab T4).
+    dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
     tok = AutoTokenizer.from_pretrained(model_name)
     tok.padding_side = "left"
     if tok.pad_token is None:
@@ -118,10 +120,10 @@ def generate(tasks, model_name, adapter, batch_size, max_new_tokens):
         quantization_config=BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.float16,
+            bnb_4bit_compute_dtype=dtype,
             bnb_4bit_use_double_quant=True,
         ),
-        torch_dtype=torch.float16,
+        dtype=dtype,
     )
     if adapter:
         from peft import PeftModel
