@@ -1,8 +1,6 @@
 # bugfix-llm
 
-Fine-tuning **Qwen2.5-Coder-7B-Instruct** with **QLoRA** to fix bugs in Python code, measured by test-verified pass rate on held-out bugs.
-
-> Work in progress.
+Fine-tuning **Qwen2.5-Coder-1.5B-Instruct** with **LoRA** to fix bugs in Python code, measured by test-verified pass rate on bugs the model never saw. Everything (data building, training, evaluation) runs on a single 8 GB laptop GPU.
 
 ## Training data
 
@@ -27,16 +25,18 @@ python src/build_dataset.py --n-train 6000 --n-heldout 300   # ~15 min on CPU
 
 ## Training
 
-`src/train_qlora.py` uses plain transformers + PEFT and runs on a free Colab/Kaggle T4:
+`src/train_qlora.py` uses plain transformers + PEFT:
 
-- Base model frozen in 4-bit NF4 (double quantization), fp16 compute.
-- LoRA r=16, α=32, dropout 0.05 on all attention and MLP projections.
+- Base model frozen in bf16 (pass `--load-4bit` for QLoRA, which is needed for 7B on a 16 GB GPU).
+- LoRA r=16, α=32, dropout 0.05 on all attention and MLP projections (18.5M trainable parameters, 1.2% of the model).
 - Loss on the assistant answer only (the prompt tokens are masked).
-- 1 epoch, LR 1e-4 with cosine decay, effective batch 16, paged 8-bit AdamW, gradient checkpointing.
-- Checkpoints every 25 steps; re-running the same command resumes after a disconnect.
+- 1 epoch, LR 1e-4 with cosine decay, effective batch 16, gradient checkpointing.
+- Checkpoints every 25 steps; re-running the same command resumes.
+
+Hardware: one **RTX 4060 Laptop GPU (8 GB)**, at about 13.5 s per optimizer step and 5.1 GB peak VRAM.
 
 ```bash
-python src/train_qlora.py --output-dir runs/qlora-7b
+python src/train_qlora.py --output-dir runs/lora-1.5b --max-examples 3000 --batch-size 1 --grad-accum 16
 ```
 
 ## Evaluation
@@ -50,16 +50,22 @@ Greedy **pass@1**, test-verified. The model gets a buggy function plus its unit 
 pip install -r requirements.txt
 python src/evaluate.py --oracle canonical                       # harness check: 100%
 python src/evaluate.py --oracle buggy                           # harness check: 0%
-python src/evaluate.py --run-name base-7b                       # base model (GPU)
-python src/evaluate.py --benchmark heldout --run-name base-7b-heldout
-python src/evaluate.py --run-name ft-7b --adapter runs/qlora-7b/adapter
+python src/evaluate.py --run-name base-1.5b                     # base model (GPU)
+python src/evaluate.py --benchmark heldout --run-name base-1.5b-heldout
+python src/evaluate.py --run-name ft-1.5b --adapter runs/lora-1.5b/adapter
 ```
 
 Results are written to `results/<run-name>/summary.json` (including per-bug-type scores) and `samples.jsonl`. `--rescore results/<run>/samples.jsonl` re-scores saved outputs without a GPU.
 
 ## Results
 
+<!-- RESULTS:START -->
 | Model | HumanEvalFix pass@1 | Held-out pass@1 |
 |---|---|---|
-| Qwen2.5-Coder-7B-Instruct (base, 4-bit) | **61.6%** (101/164) | _pending_ |
-| + QLoRA bug-fix fine-tune | _pending_ | _pending_ |
+| Qwen2.5-Coder-1.5B-Instruct (base) | 20.7% (34/164) | 41.3% (124/300) |
+| + LoRA bug-fix fine-tune (ours) | _pending_ | _pending_ |
+| **Change** | **—** | **—** |
+| *Reference: Qwen2.5-Coder-7B-Instruct (base, 4-bit)* | *61.6% (101/164)* | — |
+
+Greedy decoding, a single sample per bug, tests executed. HumanEvalFix problems were removed from the training data (see decontamination above).
+<!-- RESULTS:END -->
