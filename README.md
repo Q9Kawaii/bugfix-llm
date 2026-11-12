@@ -76,8 +76,8 @@ flowchart LR
 | Model | HumanEvalFix pass@1 | Held-out pass@1 |
 |---|---|---|
 | Qwen2.5-Coder-1.5B-Instruct (base) | 20.7% (34/164) | 41.3% (124/300) |
-| + LoRA bug-fix fine-tune (ours) | **51.2% (84/164)** | _pending_ |
-| **Change** | **+30.5 pp** | **—** |
+| + LoRA bug-fix fine-tune (ours) | **51.2% (84/164)** | **92.3% (277/300)** |
+| **Change** | **+30.5 pp** | **+51.0 pp** |
 | *Reference: Qwen2.5-Coder-7B-Instruct (base, 4-bit)* | *61.6% (101/164)* | — |
 
 HumanEvalFix by bug type (base → fine-tuned):

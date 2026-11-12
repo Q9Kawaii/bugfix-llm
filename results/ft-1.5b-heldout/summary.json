@@ -1,0 +1,19 @@
+{
+  "run_name": "ft-1.5b-heldout",
+  "benchmark": "Held-out synthetic bugs (data/heldout.jsonl), greedy, pass@1",
+  "model": "Qwen/Qwen2.5-Coder-1.5B-Instruct",
+  "adapter": "runs/lora-1.5b/adapter",
+  "oracle": null,
+  "n_tasks": 300,
+  "n_passed": 277,
+  "pass@1": 92.33,
+  "by_bug_type": {
+    "excess logic": "50/51",
+    "function misuse": "47/50",
+    "missing logic": "44/54",
+    "operator misuse": "53/56",
+    "value misuse": "38/41",
+    "variable misuse": "45/48"
+  },
+  "minutes": 4.2
+}
