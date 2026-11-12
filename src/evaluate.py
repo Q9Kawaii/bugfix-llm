@@ -101,7 +101,7 @@ def extract_code(text: str, entry_point: str) -> str:
 
 
 # ---------------------------------------------------------------- generation
-def generate(tasks, model_name, adapter, batch_size, max_new_tokens):
+def generate(tasks, model_name, adapter, batch_size, max_new_tokens, load_4bit=False):
     import torch
     if not torch.cuda.is_available():
         raise SystemExit("No GPU found. In Colab: Runtime > Change runtime type > T4 GPU, then rerun.")
@@ -114,20 +114,19 @@ def generate(tasks, model_name, adapter, batch_size, max_new_tokens):
     if tok.pad_token is None:
         tok.pad_token = tok.eos_token
 
+    quant = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=dtype,
+        bnb_4bit_use_double_quant=True,
+    ) if load_4bit else None
     model = AutoModelForCausalLM.from_pretrained(
-        model_name,
-        device_map="auto",
-        quantization_config=BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=dtype,
-            bnb_4bit_use_double_quant=True,
-        ),
-        dtype=dtype,
-    )
+        model_name, device_map="auto", quantization_config=quant, dtype=dtype)
     if adapter:
         from peft import PeftModel
         model = PeftModel.from_pretrained(model, adapter)
+        if not load_4bit:
+            model = model.merge_and_unload()  # plain weights generate faster
     model.eval()
 
     outputs = []
@@ -160,7 +159,9 @@ def main():
     ap.add_argument("--adapter", default=None, help="LoRA adapter path or HF repo")
     ap.add_argument("--run-name", default=None)
     ap.add_argument("--limit", type=int, default=None, help="only first N tasks")
-    ap.add_argument("--batch-size", type=int, default=8)
+    ap.add_argument("--batch-size", type=int, default=16)
+    ap.add_argument("--load-4bit", action="store_true",
+                    help="4-bit NF4 weights (needed for 7B on a 16 GB GPU; slower)")
     ap.add_argument("--max-new-tokens", type=int, default=768)
     ap.add_argument("--oracle", choices=["canonical", "buggy"], default=None,
                     help="skip the model; score known code to test the harness")
@@ -184,7 +185,7 @@ def main():
         run_name = args.run_name or f"oracle-{args.oracle}-{args.benchmark}"
     else:
         completions = generate(tasks, args.model, args.adapter,
-                               args.batch_size, args.max_new_tokens)
+                               args.batch_size, args.max_new_tokens, args.load_4bit)
         run_name = args.run_name or (args.adapter or args.model).rstrip("/").split("/")[-1]
 
     codes = [extract_code(c, t["entry_point"]) for c, t in zip(completions, tasks)]

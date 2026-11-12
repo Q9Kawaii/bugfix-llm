@@ -1,13 +1,16 @@
-"""QLoRA fine-tuning of Qwen2.5-Coder on the synthetic bug-fix dataset.
+"""LoRA / QLoRA fine-tuning of Qwen2.5-Coder on the synthetic bug-fix dataset.
 
-Base model frozen in 4-bit NF4; LoRA adapters (r=16) on all attention and MLP
-projections. Loss is computed on the assistant answer only. Built on plain
-transformers + PEFT so it runs on a free Colab/Kaggle T4 without extra deps.
+Base model frozen (bf16 by default, or 4-bit NF4 with --load-4bit = QLoRA);
+LoRA adapters (r=16) on all attention and MLP projections. Loss is computed on
+the assistant answer only. Plain transformers + PEFT.
 
-  # 3-step smoke test (checks memory + prints seconds/step)
-  python src/train_qlora.py --output-dir runs/smoke --max-steps 3
-  # full run; re-run the same command after a disconnect to resume
-  python src/train_qlora.py --output-dir /content/drive/MyDrive/bugfix-llm/qlora-7b
+  # smoke test (checks memory + prints seconds/step)
+  python src/train_qlora.py --output-dir runs/smoke --max-steps 5
+  # full run on a local 8 GB GPU (1.5B); re-run the same command to resume
+  python src/train_qlora.py --output-dir runs/lora-1.5b
+  # 7B on a 16 GB GPU (e.g. Colab T4)
+  python src/train_qlora.py --model Qwen/Qwen2.5-Coder-7B-Instruct --load-4bit \\
+      --batch-size 1 --grad-accum 16 --output-dir runs/qlora-7b
 """
 
 import argparse
@@ -66,8 +69,7 @@ def build_trainer(model, tok, data, args, gpu: bool = True):
         warmup_steps=max(1, int(0.03 * total_steps)),
         weight_decay=0.0,
         max_grad_norm=1.0,
-        optim="paged_adamw_8bit" if gpu else "adamw_torch",
-        bf16=gpu and bf16_ok(),
+        optim="paged_adamw_8bit" if gpu and getattr(args, "load_4bit", False) else "adamw_torch",        bf16=gpu and bf16_ok(),
         fp16=gpu and not bf16_ok(),
         logging_steps=5,
         save_steps=args.save_steps,
@@ -100,6 +102,8 @@ def main():
     ap.add_argument("--grad-accum", type=int, default=8)
     ap.add_argument("--save-steps", type=int, default=25)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--load-4bit", action="store_true",
+                    help="QLoRA: 4-bit NF4 base (needed for 7B on 16 GB; slower)")
     args = ap.parse_args()
 
     import torch
@@ -124,17 +128,15 @@ def main():
           f"tokens: {n_tok:,}, mean {n_tok // len(data)}", flush=True)
 
     # ---------------- model
+    dtype = torch.bfloat16 if bf16_ok() else torch.float16
+    quant = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=dtype,
+        bnb_4bit_use_double_quant=True,
+    ) if args.load_4bit else None
     model = AutoModelForCausalLM.from_pretrained(
-        args.model,
-        quantization_config=BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.bfloat16 if bf16_ok() else torch.float16,
-            bnb_4bit_use_double_quant=True,
-        ),
-        dtype=torch.bfloat16 if bf16_ok() else torch.float16,
-        device_map={"": 0},
-    )
+        args.model, quantization_config=quant, dtype=dtype, device_map={"": 0})
     model.config.use_cache = False
     model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
     model.enable_input_require_grads()
@@ -164,6 +166,7 @@ def main():
         "tokens": n_tok,
         "steps": steps,
         "minutes_this_session": round(minutes, 1),
+        "peak_vram_gb": round(torch.cuda.max_memory_allocated() / 1e9, 2),
         "sec_per_step": round(60 * minutes / max(1, steps - (int(last.split("-")[-1]) if last else 0)), 1),
         "args": vars(args),
         "log_history": trainer.state.log_history,

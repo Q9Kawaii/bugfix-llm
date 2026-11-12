@@ -1,0 +1,19 @@
+{
+  "run_name": "base-1.5b",
+  "benchmark": "HumanEvalFix-Python (tests in prompt), greedy, pass@1",
+  "model": "Qwen/Qwen2.5-Coder-1.5B-Instruct",
+  "adapter": null,
+  "oracle": null,
+  "n_tasks": 164,
+  "n_passed": 34,
+  "pass@1": 20.73,
+  "by_bug_type": {
+    "excess logic": "4/31",
+    "function misuse": "3/8",
+    "missing logic": "4/33",
+    "operator misuse": "3/25",
+    "value misuse": "12/44",
+    "variable misuse": "8/23"
+  },
+  "minutes": 4.0
+}
